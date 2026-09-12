@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { AI_PROFILE } from "@/lib/mock-data";
 import { SettingRow, SettingsSection } from "./setting-row";
 
+// Placeholder UI only — not sent to Ollama. The live prompt is built in
+// `src/lib/persona.ts` (`buildSystemPrompt`) and attached by `/api/chat`.
 const DEFAULT_SYSTEM_PROMPT =
   "あなたはユーザーの専属AIコンパニオンです。アシスタントというより、日々の生活を共にする相手として、親しみやすく、落ち着いた口調で会話してください。";
 

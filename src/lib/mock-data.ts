@@ -1,3 +1,4 @@
+import { companionIdentity } from "@/lib/companion";
 import type { AICompanionProfile, ChatMessage, Conversation } from "@/types/ai";
 
 /**
@@ -18,9 +19,9 @@ import type { AICompanionProfile, ChatMessage, Conversation } from "@/types/ai";
  */
 
 export const AI_PROFILE: AICompanionProfile = {
-  name: "Lumi",
+  name: companionIdentity.name,
   model: "myai:qwen3-8b",
-  avatarInitial: "L",
+  avatarInitial: companionIdentity.avatarInitial,
 };
 
 const MIN = 60 * 1000;

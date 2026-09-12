@@ -2,14 +2,17 @@
 
 ローカルPC上で動くLLM（Ollama）と、長期間にわたって自然な会話をするための、自分専用AIコンパニオンアプリです。
 
-コンパニオンの名前は **Lumi** です。チャット画面からの入力はブラウザから Ollama へ直接送らず、Next.js の API Route（`POST /api/chat`）経由でローカルの Ollama（既定モデル: `myai:qwen3-8b`）に送られます。応答はストリーミングで Chat UI に逐次表示されます。
+チャット画面からの入力はブラウザから Ollama へ直接送らず、Next.js の API Route（`POST /api/chat`）経由でローカルの Ollama（既定モデル: `myai:qwen3-8b`）に送られます。応答はストリーミングで Chat UI に逐次表示されます。
+
+UI 上の表示名は現在 **Lumi** です（`src/lib/companion.ts`）。これは画面用の名前で、正式なコンパニオン名として確定していません。会話の人格は `src/lib/persona.ts` で管理し、system prompt では名前を固定していません。
 
 ## アプリの特徴
 
 現在のコードに存在するものだけを記載しています。
 
 - **Local AI Companion** — ローカルLLMを前提にした専用チャットアプリ
-- **Lumi** — コンパニオンのプロファイル名（`src/lib/mock-data.ts`）
+- **表示名 Lumi** — UI 用のプロファイル名（`src/lib/companion.ts`）。人格とは分離しています
+- **会話基盤（Persona）** — 話し方・丁寧さ・回答の長さなどを `src/lib/persona.ts` で管理し、`/api/chat` が system prompt として付与します
 - **ローカルLLM** — Ollama 上のモデル（既定: `myai:qwen3-8b`）とサーバー側で接続
 - **チャットUI** — 会話一覧サイドバー、メッセージ表示、入力欄、生成中の停止
 - **ストリーミング応答** — 生成された文章をトークン単位で逐次表示
@@ -57,8 +60,19 @@
   → ChatProvider.sendMessage()
   → streamChat()（src/lib/ollama.ts）
   → POST /api/chat（src/app/api/chat/route.ts）
+  → Persona から System Prompt を生成して付与（src/lib/persona.ts）
   → Ollama POST /api/chat（stream: true, think: false）
   → トークンを Chat UI へ逐次表示
+```
+
+会話履歴は ChatProvider が user / assistant の順で `/api/chat` に送ります。system メッセージはクライアントから送らず、サーバー側で Persona から生成して先頭に付けます。
+
+```text
+system（Persona）
+  → user
+  → assistant
+  → user
+  → …
 ```
 
 `src/lib/ollama.ts` は Client Component から呼ばれる接続口です。`OLLAMA_BASE_URL` / `OLLAMA_MODEL` は読みません。Ollama への実際のリクエストは `src/lib/ollama-server.ts` と `/api/chat` が担当します。
@@ -98,6 +112,23 @@ Ollama は NDJSON のチャンクを返します。`/api/chat` が `message.cont
 Qwen3 の thinking 出力を通常のチャット画面へ表示しないため、Ollama API リクエストでは `think: false` を指定しています。
 
 Settings 画面にも Thinking のスイッチがありますが、現時点では UI 上の状態だけで、実際の API リクエストにはつながっていません。サーバー側は常に `think: false` を送ります。
+
+## 会話基盤（Persona）
+
+人格・会話スタイルは Ollama の接続処理から分離しています。
+
+| 対象 | ファイル | 役割 |
+| --- | --- | --- |
+| 表示名 | `src/lib/companion.ts` | UI に出す名前・頭文字。現在は Lumi |
+| 人格 | `src/lib/persona.ts` の `defaultPersona` | 言語、雰囲気、性格、丁寧さ、話し方、回答の長さ |
+| System Prompt | `src/lib/persona.ts` の `buildSystemPrompt()` | Persona から生成 |
+| 付与 | `src/app/api/chat/route.ts` | `applyPersonaToMessages()` で会話の先頭に付ける |
+
+話し方を変えたいときは、まず `src/lib/persona.ts` の `defaultPersona` を編集します。名前を UI だけ変えたいときは `src/lib/companion.ts` です。モデルに名前を覚えさせたい場合は、`defaultPersona.name` を設定してください（未設定のままが既定です）。
+
+Settings 画面の System Prompt 欄はプレースホルダで、まだ Ollama へは送られません。
+
+`myai:qwen3-8b` の Modelfile にも SYSTEM 文がありますが、アプリからの `/api/chat` では Persona 由来の system メッセージがリクエストごとにそれを上書きします。会話の調整は Modelfile ではなく `src/lib/persona.ts` を先に変えてください。
 
 ## 必要なもの
 
@@ -233,6 +264,8 @@ src/
   lib/
     ollama.ts            クライアントの streamChat()（/api/chat へ接続）
     ollama-server.ts     サーバー専用の Ollama 設定・ストリーム処理
+    persona.ts           人格設定と System Prompt 生成
+    companion.ts         UI 表示名（現在は Lumi。人格とは別）
     mock-data.ts         UI確認用の日本語会話モックデータ
     date.ts               日時フォーマット・グルーピング
     utils.ts              cn() ヘルパー

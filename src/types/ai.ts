@@ -86,6 +86,11 @@ export const AI_PRESENCE_META: Record<AIPresence, AIPresenceMeta> = {
 /** Future states for the microphone / voice-input control. */
 export type MicState = "idle" | "recording" | "processing" | "unavailable";
 
+/**
+ * UI-facing companion profile. Display name comes from
+ * `src/lib/companion.ts`. Conversation style lives in `src/lib/persona.ts`
+ * and is not required to match this name.
+ */
 export interface AICompanionProfile {
   name: string;
   model: string;

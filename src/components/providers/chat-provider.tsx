@@ -223,9 +223,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // user/assistant turns only. The system prompt is attached on the
+      // server from `src/lib/persona.ts` (not sent by the client).
       const history: OllamaChatMessage[] = [
         ...activeConversation.messages
-          .filter((m) => m.status !== "error" && m.content.trim().length > 0)
+          .filter(
+            (m) =>
+              (m.role === "user" || m.role === "assistant") &&
+              m.status !== "error" &&
+              m.content.trim().length > 0,
+          )
           .map((m) => ({
             role: m.role,
             content: m.content,

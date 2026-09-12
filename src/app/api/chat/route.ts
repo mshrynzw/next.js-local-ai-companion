@@ -8,6 +8,7 @@ import {
   pipeOllamaTextStream,
   sanitizeMessages,
 } from "@/lib/ollama-server";
+import { applyPersonaToMessages } from "@/lib/persona";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "messages が必要です。" }, { status: 400 });
   }
 
+  const ollamaMessages = applyPersonaToMessages(messages);
+
   const ollamaAbort = new AbortController();
   const onClientAbort = () => ollamaAbort.abort();
   request.signal.addEventListener("abort", onClientAbort);
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
     const ollamaResponse = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildOllamaChatRequest(model, messages)),
+      body: JSON.stringify(buildOllamaChatRequest(model, ollamaMessages)),
       signal: ollamaAbort.signal,
     });
 
