@@ -1,38 +1,13 @@
 /**
- * Ollama integration seam.
- * =========================================================================
- * Nothing in this file talks to a real Ollama server yet -- `streamChat`
- * below returns a mocked, believable stream so the rest of the UI
- * (message bubbles, the "thinking" indicator, token-by-token rendering,
- * abort/interrupt handling) can already be built and exercised against
- * realistic behavior.
+ * Client-side Ollama integration seam.
  *
- * When you're ready to connect the real backend, replace the body of
- * `streamChat` with a call to Ollama's streaming chat endpoint. Ollama
- * exposes `/api/chat` and responds with newline-delimited JSON, one line
- * per generated token/chunk, e.g.:
+ * This module is imported by Client Components. It must not read
+ * `OLLAMA_BASE_URL` / `OLLAMA_MODEL` — those live on the server and are
+ * used by `src/app/api/chat/route.ts` when talking to Ollama.
  *
- *   POST http://localhost:11434/api/chat
- *   { "model": "myai:qwen3-8b", "messages": [...], "stream": true }
- *
- *   -> {"message":{"role":"assistant","content":"こん"},"done":false}
- *   -> {"message":{"role":"assistant","content":"にちは"},"done":false}
- *   -> {"done":true, ...}
- *
- * A real implementation reads `response.body` with a `ReadableStream`
- * reader, splits on newlines, `JSON.parse`s each line, and calls
- * `onToken(line.message.content)` until `line.done === true`. The
- * `signal` parameter should be forwarded to `fetch` so an in-flight
- * generation can be cancelled -- this is the same hook that will later
- * let a voice interruption ("barge-in") cut a spoken response short.
- *
- * See: https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-chat-completion
+ * Flow:
+ *   ChatProvider → streamChat() → POST /api/chat → Ollama /api/chat
  */
-
-export const OLLAMA_BASE_URL =
-  process.env.NEXT_PUBLIC_OLLAMA_BASE_URL ?? "http://localhost:11434";
-
-export const OLLAMA_MODEL = process.env.NEXT_PUBLIC_OLLAMA_MODEL ?? "myai:qwen3-8b";
 
 export interface OllamaChatMessage {
   role: "system" | "user" | "assistant";
@@ -40,11 +15,23 @@ export interface OllamaChatMessage {
 }
 
 export interface OllamaChatRequest {
-  model: string;
+  model?: string;
   messages: OllamaChatMessage[];
+  stream?: boolean;
+  think?: boolean;
   options?: {
     temperature?: number;
   };
+}
+
+export interface OllamaChatResponse {
+  model?: string;
+  message?: {
+    role?: string;
+    content?: string;
+  };
+  done?: boolean;
+  error?: string;
 }
 
 export interface StreamChatCallbacks {
@@ -53,21 +40,97 @@ export interface StreamChatCallbacks {
   onError: (error: Error) => void;
 }
 
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 /**
- * Streams a chat response. Currently backed by a local mock; the public
- * signature is what a real Ollama-backed implementation should keep, so
- * callers (see `src/hooks/use-chat.ts`) never need to change.
+ * Streams a chat response from the Next.js API route (which proxies Ollama).
+ * Callers (see `src/components/providers/chat-provider.tsx`) stay unchanged
+ * aside from not supplying a client-side model env var.
  */
 export async function streamChat(
   request: OllamaChatRequest,
   callbacks: StreamChatCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
-  return mockStreamChat(request, callbacks, signal);
+  return streamChatFromApi(request, callbacks, signal);
+}
+
+async function streamChatFromApi(
+  request: OllamaChatRequest,
+  { onToken, onDone, onError }: StreamChatCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  let full = "";
+
+  try {
+    if (signal?.aborted) {
+      onDone(full);
+      return;
+    }
+
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: request.messages }),
+      cache: "no-store",
+      signal,
+    });
+
+    if (!response.ok) {
+      onError(new Error(await readApiError(response)));
+      return;
+    }
+
+    if (!response.body) {
+      onError(new Error("応答ストリームを取得できませんでした。"));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      if (chunk) {
+        full += chunk;
+        onToken(chunk);
+      }
+    }
+
+    onDone(full);
+  } catch (error) {
+    if (isAbortError(error)) {
+      onDone(full);
+      return;
+    }
+    console.error("[ollama] streamChat failed", error);
+    onError(error instanceof Error ? error : new Error("Unknown streaming error"));
+  }
+}
+
+async function readApiError(response: Response): Promise<string> {
+  try {
+    const data: unknown = await response.json();
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof (data as { error: unknown }).error === "string"
+    ) {
+      return (data as { error: string }).error;
+    }
+  } catch {
+    // Fall through to a generic status message.
+  }
+  return `サーバーエラーが発生しました（HTTP ${response.status}）。`;
 }
 
 // ---------------------------------------------------------------------------
-// Mock implementation -- UI development only, delete when wiring up Ollama.
+// Mock implementation -- kept for isolated UI work. Not used by streamChat.
 // ---------------------------------------------------------------------------
 
 const COMFORT_REPLY =
@@ -103,7 +166,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function mockStreamChat(
+export async function mockStreamChat(
   request: OllamaChatRequest,
   { onToken, onDone, onError }: StreamChatCallbacks,
   signal?: AbortSignal,
@@ -111,13 +174,10 @@ async function mockStreamChat(
   const lastUserMessage = [...request.messages].reverse().find((m) => m.role === "user");
   const reply = pickMockReply(lastUserMessage?.content ?? "");
 
-  // Split into small chunks (a couple of characters at a time) to emulate
-  // token-by-token generation without depending on a tokenizer.
   const chunks = reply.match(/[\s\S]{1,3}/g) ?? [reply];
   let full = "";
 
   try {
-    // A brief pause before the first token models "thinking" time.
     await sleep(500 + Math.random() * 400, signal);
 
     for (const chunk of chunks) {
@@ -129,10 +189,7 @@ async function mockStreamChat(
 
     onDone(full);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      // Interrupted (e.g. user sent a new message or, in the future,
-      // started speaking over the AI). Resolve with whatever was
-      // generated so far rather than surfacing it as a hard error.
+    if (isAbortError(error)) {
       onDone(full);
       return;
     }

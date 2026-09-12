@@ -46,9 +46,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <MarkdownContent content={message.content} />
           )}
           {message.status === "error" && (
-            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-destructive-foreground/90">
-              <AlertTriangle className="size-3.5" />
-              応答の生成中にエラーが発生しました。
+            <div className="mt-1.5 flex items-start gap-1.5 text-xs text-destructive-foreground/90">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{message.error ?? "応答の生成中にエラーが発生しました。"}</span>
             </div>
           )}
         </div>

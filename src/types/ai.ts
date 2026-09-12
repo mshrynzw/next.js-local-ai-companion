@@ -24,6 +24,8 @@ export interface ChatMessage {
   content: string;
   createdAt: string; // ISO timestamp
   status?: MessageStatus;
+  /** User-facing error when `status` is `error`. */
+  error?: string;
 }
 
 export interface Conversation {

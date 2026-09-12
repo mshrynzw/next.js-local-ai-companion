@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { OLLAMA_MODEL } from "@/lib/ollama";
+import { AI_PROFILE } from "@/lib/mock-data";
 import { SettingRow, SettingsSection } from "./setting-row";
 
 const DEFAULT_SYSTEM_PROMPT =
@@ -24,12 +24,12 @@ export function AISettings() {
       description="応答生成に使うローカルモデルの挙動を調整します。"
     >
       <SettingRow label="モデル" description="Ollamaに登録されているモデル">
-        <Select defaultValue={OLLAMA_MODEL}>
+        <Select defaultValue={AI_PROFILE.model}>
           <SelectTrigger aria-label="モデルを選択">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={OLLAMA_MODEL}>{OLLAMA_MODEL}</SelectItem>
+            <SelectItem value={AI_PROFILE.model}>{AI_PROFILE.model}</SelectItem>
             <SelectItem value="qwen3:8b" disabled>
               qwen3:8b (base)
             </SelectItem>

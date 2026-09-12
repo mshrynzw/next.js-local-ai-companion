@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { AI_PROFILE, DEFAULT_CONVERSATION_ID, MOCK_CONVERSATIONS } from "@/lib/mock-data";
-import { OLLAMA_MODEL, streamChat, type OllamaChatMessage } from "@/lib/ollama";
+import { streamChat, type OllamaChatMessage } from "@/lib/ollama";
 import type { AICompanionProfile, AIPresence, ChatMessage, Conversation } from "@/types/ai";
 
 /**
@@ -32,6 +32,7 @@ type Action =
       conversationId: string;
       messageId: string;
       status: "complete" | "error";
+      error?: string;
     }
   | { type: "SET_PRESENCE"; presence: AIPresence };
 
@@ -129,7 +130,9 @@ function reducer(state: ChatState, action: Action): ChatState {
           return {
             ...c,
             messages: c.messages.map((m) =>
-              m.id === action.messageId ? { ...m, status: action.status } : m,
+              m.id === action.messageId
+                ? { ...m, status: action.status, error: action.error }
+                : m,
             ),
           };
         }),
@@ -221,15 +224,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       abortRef.current = controller;
 
       const history: OllamaChatMessage[] = [
-        ...activeConversation.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        ...activeConversation.messages
+          .filter((m) => m.status !== "error" && m.content.trim().length > 0)
+          .map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
         { role: "user", content: trimmed },
       ];
 
       void streamChat(
-        { model: OLLAMA_MODEL, messages: history },
+        { messages: history },
         {
           onToken: (token) => {
             dispatch({
@@ -250,14 +255,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsGenerating(false);
             abortRef.current = null;
           },
-          onError: () => {
+          onError: (error) => {
+            console.error("[chat] generation failed:", error.message);
             dispatch({
               type: "COMPLETE_MESSAGE",
               conversationId,
               messageId: assistantMessage.id,
               status: "error",
+              error: error.message,
             });
-            dispatch({ type: "SET_PRESENCE", presence: "idle" });
+            dispatch({
+              type: "SET_PRESENCE",
+              presence: error.message.includes("Ollamaに接続できません") ? "offline" : "idle",
+            });
             setIsGenerating(false);
             abortRef.current = null;
           },
