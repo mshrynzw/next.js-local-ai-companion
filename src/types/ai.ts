@@ -42,7 +42,7 @@ export interface Conversation {
  * the conversation and (eventually) reflected in the input area.
  *
  * - `idle`      connected and present, waiting ("Online")
- * - `listening` actively capturing voice input (future: mic is live)
+ * - `listening` actively capturing voice input (mic is live)
  * - `thinking`  generating a response
  * - `speaking`  playing back a spoken response (future: TTS)
  * - `offline`   the local backend (Ollama) is unreachable
@@ -83,8 +83,20 @@ export const AI_PRESENCE_META: Record<AIPresence, AIPresenceMeta> = {
   },
 };
 
-/** Future states for the microphone / voice-input control. */
+/**
+ * Microphone / voice-input control.
+ *
+ * - `idle`        ready to record
+ * - `recording`   MediaRecorder is capturing audio
+ * - `processing`  sending audio to Whisper (`/api/transcribe`)
+ * - `unavailable` MediaRecorder / getUserMedia is not supported
+ */
 export type MicState = "idle" | "recording" | "processing" | "unavailable";
+
+/** JSON returned by `POST /api/transcribe` on success. */
+export interface TranscriptionResponse {
+  text: string;
+}
 
 /**
  * UI-facing companion profile. Display name comes from

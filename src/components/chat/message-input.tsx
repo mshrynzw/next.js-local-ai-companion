@@ -6,6 +6,7 @@ import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { cn } from "@/lib/utils";
 import { MicButton } from "./mic-button";
 
@@ -23,6 +24,19 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = React.useState(false);
 
+  const handleTranscript = React.useCallback(
+    (text: string) => {
+      onChange(text);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    },
+    [onChange],
+  );
+
+  const { state: micState, error: voiceError, isBusy: isVoiceBusy, toggle: toggleMic } =
+    useVoiceRecorder({ onTranscript: handleTranscript });
+
   React.useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -30,7 +44,7 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   }, [value]);
 
-  const canSend = value.trim().length > 0 && !isGenerating;
+  const canSend = value.trim().length > 0 && !isGenerating && !isVoiceBusy;
 
   const handleSubmit = () => {
     if (!canSend) return;
@@ -43,6 +57,13 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
       handleSubmit();
     }
   };
+
+  let hint = "Enterで送信 ・ Shift+Enterで改行";
+  if (micState === "recording") {
+    hint = "録音中 — もう一度マイクボタンを押すと停止します";
+  } else if (micState === "processing") {
+    hint = "文字起こし中…";
+  }
 
   return (
     <div className="border-t border-border/70 bg-background px-4 pb-4 pt-3 sm:px-6">
@@ -66,7 +87,7 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
         />
 
         <div className="flex shrink-0 items-center gap-1">
-          <MicButton />
+          <MicButton state={micState} onToggle={toggleMic} />
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -85,8 +106,15 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
           </Tooltip>
         </div>
       </div>
-      <p className="mt-1.5 px-1 text-center text-[11px] text-muted-foreground/50">
-        Enterで送信 ・ Shift+Enterで改行
+      <p
+        className={cn(
+          "mt-1.5 px-1 text-center text-[11px]",
+          voiceError ? "text-destructive" : "text-muted-foreground/50",
+        )}
+        role="status"
+        aria-live="polite"
+      >
+        {voiceError ?? hint}
       </p>
     </div>
   );

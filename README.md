@@ -4,6 +4,8 @@
 
 チャット画面からの入力はブラウザから Ollama へ直接送らず、Next.js の API Route（`POST /api/chat`）経由でローカルの Ollama（既定モデル: `myai:qwen3-8b`）に送られます。応答はストリーミングで Chat UI に逐次表示されます。
 
+音声入力はブラウザの MediaRecorder で録音し、Next.js の `POST /api/transcribe` 経由でローカルの faster-whisper-server に送ります。認識結果はチャット入力欄に入り、ユーザーが確認・編集してから送信します（自動送信しません）。ブラウザから Whisper サーバーへは直接アクセスしません。
+
 UI 上の表示名は現在 **Lumi** です（`src/lib/companion.ts`）。これは画面用の名前で、正式なコンパニオン名として確定していません。会話の人格は `src/lib/persona.ts` で管理し、system prompt では名前を固定していません。
 
 ## アプリの特徴
@@ -18,13 +20,51 @@ UI 上の表示名は現在 **Lumi** です（`src/lib/companion.ts`）。これ
 - **ストリーミング応答** — 生成された文章をトークン単位で逐次表示
 - **Markdown** — 応答を `react-markdown` + `remark-gfm` で表示（コードブロックのコピーにも対応）
 - **Memory / Settings UI** — `/memory` と `/settings` の画面はあります（見た目・テーマ変更以外はプレースホルダが多いです）
-- **将来的な音声対応を想定した構造** — マイクボタンや `AIPresence` / `MicState` 型はありますが、Whisper / TTS 自体は未接続です
+- **音声入力（Whisper）** — マイクボタンで録音し、faster-whisper-server が日本語を文字起こしして入力欄へ入れます。TTS（音声出力）は未接続です
 
 会話の履歴は `ChatProvider` のメモリ上で管理しています。ページを再読み込みすると、シード用のモック会話に戻ります。
 
 ## アーキテクチャ
 
-ブラウザは Ollama に直接アクセスしません。チャットは必ず Next.js の API Route を経由します。
+ブラウザは Ollama にも faster-whisper-server にも直接アクセスしません。チャットは `/api/chat`、音声認識は `/api/transcribe` を経由します。
+
+文字入力と音声入力は入力欄で合流し、送信は常に既存の `ChatProvider` 経由です。
+
+```text
+Browser
+   │
+   │ MediaRecorder
+   ▼
+Next.js
+   │
+   │ POST /api/transcribe
+   ▼
+faster-whisper-server
+   │
+   ▼
+faster-whisper
+   │
+   ▼
+Japanese text
+   │
+   ▼
+Chat Input
+   │
+   │ User confirms and presses Send
+   ▼
+ChatProvider
+   │
+   ▼
+/api/chat
+   │
+   ▼
+Ollama
+   │
+   ▼
+myai:qwen3-8b
+```
+
+チャット（Ollama）だけの経路:
 
 ```text
 ┌───────────────┐
@@ -136,6 +176,7 @@ Settings 画面の System Prompt 欄はプレースホルダで、まだ Ollama 
 - [pnpm](https://pnpm.io/)
 - [Ollama](https://ollama.com/) がローカルで起動していること
 - Ollama にモデル `myai:qwen3-8b` がインストールされていること
+- 音声入力を使う場合は、別ディレクトリの faster-whisper-server が `http://127.0.0.1:8000` で起動していること
 
 ### Ollama の起動確認
 
@@ -187,6 +228,7 @@ ollama pull myai:qwen3-8b
 ```env
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=myai:qwen3-8b
+WHISPER_SERVER_URL=http://127.0.0.1:8000
 ```
 
 ### 6. 開発サーバーを起動
@@ -203,14 +245,15 @@ http://localhost:3000
 
 ## 環境変数
 
-Ollama 接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` は付けないでください。ブラウザに公開する必要はありません。
+Ollama と faster-whisper-server への接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` は付けないでください。ブラウザに公開する必要はありません。
 
 | 変数 | 説明 | 既定値 |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | Ollama のベース URL | `http://localhost:11434` |
 | `OLLAMA_MODEL` | 使用するモデル名 | `myai:qwen3-8b` |
+| `WHISPER_SERVER_URL` | faster-whisper-server のベース URL | `http://127.0.0.1:8000` |
 
-未設定の場合は `src/lib/ollama-server.ts` の既定値が使われます。
+未設定の場合は `src/lib/ollama-server.ts` / `src/lib/whisper-server.ts` の既定値が使われます。`NEXT_PUBLIC_` は付けないでください。
 
 ### `.env.example` と `.env.local`
 
@@ -234,6 +277,7 @@ Ollama 接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` �
 - react-markdown
 - remark-gfm
 - Ollama（ローカル推論。npm 依存ではなく外部プロセス）
+- faster-whisper-server（ローカル音声認識。npm 依存ではなく外部プロセス）
 
 パッケージマネージャは pnpm（`packageManager`: `pnpm@12.4.1`）です。
 
@@ -245,7 +289,8 @@ Ollama 接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` �
 src/
   app/
     page.tsx            チャット画面（ルート）
-    api/chat/route.ts   Ollama へのプロキシ（ストリーミング）
+    api/chat/route.ts        Ollama へのプロキシ（ストリーミング）
+    api/transcribe/route.ts  faster-whisper-server へのプロキシ
     settings/page.tsx   設定画面
     memory/page.tsx      Memory画面
     layout.tsx           全体レイアウト（テーマ・チャット状態のProvider）
@@ -264,24 +309,82 @@ src/
   lib/
     ollama.ts            クライアントの streamChat()（/api/chat へ接続）
     ollama-server.ts     サーバー専用の Ollama 設定・ストリーム処理
+    whisper.ts           クライアントの transcribeAudio()（/api/transcribe へ接続）
+    whisper-server.ts    サーバー専用の Whisper 設定・エラー処理
     persona.ts           人格設定と System Prompt 生成
     companion.ts         UI 表示名（現在は Lumi。人格とは別）
     mock-data.ts         UI確認用の日本語会話モックデータ
     date.ts               日時フォーマット・グルーピング
     utils.ts              cn() ヘルパー
 
-  types/ai.ts             ChatMessage, Conversation, AIPresence などの型定義
+  hooks/
+    use-voice-recorder.ts MediaRecorder による録音と文字起こし状態
+
+  types/ai.ts             ChatMessage, Conversation, AIPresence, MicState などの型定義
 ```
+
+## Voice Input
+
+音声入力には **faster-whisper-server** が必要です。Next.js とは別プロセスで起動します。
+
+### 起動方法（2 つのターミナル）
+
+Terminal 1 — faster-whisper-server:
+
+```powershell
+cd D:\Code\faster-whisper-server
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+詳細は faster-whisper-server 側の README を参照してください。
+
+Terminal 2 — Next.js:
+
+```powershell
+cd D:\Code\next.js-local-ai-companion
+pnpm dev
+```
+
+ブラウザは `http://localhost:3000`（または `http://127.0.0.1:3000`）で開きます。マイク（`getUserMedia`）は Secure Context が必要なため、ローカルでは localhost を使ってください。
+
+### 動作
+
+1. チャット画面のマイクボタンを押す
+2. ブラウザがマイクへのアクセス許可を求める
+3. もう一度押すと録音停止
+4. ブラウザは **`POST /api/transcribe`** に音声を送る（faster-whisper-server へは直接送らない）
+5. Next.js サーバーが `WHISPER_SERVER_URL`（既定: `http://127.0.0.1:8000`）の `POST /transcribe` へ転送する
+6. 認識された日本語テキストが **既存のチャット入力欄** に入る
+7. ユーザーが内容を確認・編集し、既存の送信ボタンを押す
+8. 既存の `ChatProvider.sendMessage()` → `/api/chat` → Ollama
+
+音声認識結果は **自動送信しません**。
+
+コード上の流れ:
+
+```text
+マイクボタン
+  → useVoiceRecorder()（src/hooks/use-voice-recorder.ts）
+  → MediaRecorder（ブラウザ標準 API）
+  → transcribeAudio()（src/lib/whisper.ts）
+  → POST /api/transcribe（src/app/api/transcribe/route.ts）
+  → faster-whisper-server POST /transcribe
+  → 入力欄へ text をセット（ChatProvider はまだ呼ばない）
+  → ユーザーが送信
+  → ChatProvider.sendMessage()
+  → /api/chat → Ollama
+```
+
+`src/lib/whisper.ts` は Client Component から呼ばれる接続口です。`WHISPER_SERVER_URL` は読みません。Whisper サーバーへの実際のリクエストは `src/lib/whisper-server.ts` と `/api/transcribe` が担当します。
 
 ## Future work
 
 次の機能は **未実装** です。UI や型の受け皿だけがあるものもあります。
 
-- Whisper による音声入力
 - TTS による音声出力
 - 長期 Memory（会話を越えた永続記憶。`/memory` はプレースホルダ UI）
 - Vector DB
 - Web 検索
 - 外部ツール連携
 
-音声入力（Whisper）・音声合成（TTS）・長期記憶については、`src/types/ai.ts` の `AIPresence` / `MicState` 型と `src/components/chat/mic-button.tsx` が拡張の起点になります。
+音声合成（TTS）・長期記憶については、`src/types/ai.ts` の `AIPresence`（`speaking`）型が拡張の起点になります。
