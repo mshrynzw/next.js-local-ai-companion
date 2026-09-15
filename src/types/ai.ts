@@ -44,7 +44,7 @@ export interface Conversation {
  * - `idle`      connected and present, waiting ("Online")
  * - `listening` actively capturing voice input (mic is live)
  * - `thinking`  generating a response
- * - `speaking`  playing back a spoken response (future: TTS)
+ * - `speaking`  playing back a spoken response (VOICEPEAK TTS)
  * - `offline`   the local backend (Ollama) is unreachable
  */
 export type AIPresence = "idle" | "listening" | "thinking" | "speaking" | "offline";
@@ -92,6 +92,18 @@ export const AI_PRESENCE_META: Record<AIPresence, AIPresenceMeta> = {
  * - `unavailable` MediaRecorder / getUserMedia is not supported
  */
 export type MicState = "idle" | "recording" | "processing" | "unavailable";
+
+/**
+ * Client-side TTS playback lifecycle. Failures must not mark the chat
+ * message itself as `error`.
+ *
+ * - `idle`       nothing to announce
+ * - `generating` waiting on `/api/tts`
+ * - `speaking`   playing the WAV
+ * - `skipped`    too long / code / empty — chat still succeeded
+ * - `error`      synthesis or playback failed — chat still succeeded
+ */
+export type TtsStatus = "idle" | "generating" | "speaking" | "skipped" | "error";
 
 /** JSON returned by `POST /api/transcribe` on success. */
 export interface TranscriptionResponse {

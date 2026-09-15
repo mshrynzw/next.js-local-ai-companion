@@ -12,11 +12,18 @@ import type { ChatMessage as ChatMessageType } from "@/types/ai";
 export interface MessageListProps {
   messages: ChatMessageType[];
   onSuggestion: (text: string) => void;
+  speakingMessageId?: string | null;
+  onSpeak?: (messageId: string) => void;
 }
 
 const BOTTOM_THRESHOLD = 96;
 
-export function MessageList({ messages, onSuggestion }: MessageListProps) {
+export function MessageList({
+  messages,
+  onSuggestion,
+  speakingMessageId = null,
+  onSpeak,
+}: MessageListProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const [stickToBottom, setStickToBottom] = React.useState(true);
 
@@ -53,7 +60,12 @@ export function MessageList({ messages, onSuggestion }: MessageListProps) {
       >
         <div className="flex flex-col gap-4 py-5">
           {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage
+              key={message.id}
+              message={message}
+              isSpeaking={speakingMessageId === message.id}
+              onSpeak={onSpeak}
+            />
           ))}
         </div>
       </ScrollArea>

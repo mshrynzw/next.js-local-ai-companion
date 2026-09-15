@@ -8,7 +8,7 @@ export function VoiceSettings() {
   return (
     <SettingsSection
       title="Voice"
-      description="音声認識・音声合成の設定です。今後Whisper／TTSと接続予定です。"
+      description="音声認識は Whisper、読み上げは VOICEPEAK です。声の選択は今後対応予定です。"
     >
       <SettingRow label="Speech recognition" description="音声をテキストに変換するモデル">
         <div className="flex items-center gap-2">

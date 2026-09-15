@@ -1,6 +1,9 @@
-import { AlertTriangle } from "lucide-react";
+"use client";
+
+import { AlertTriangle, Volume2 } from "lucide-react";
 
 import { PresenceOrb } from "@/components/ai/presence-orb";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MarkdownContent } from "./markdown-content";
 import { TypingIndicator } from "./typing-indicator";
@@ -9,11 +12,19 @@ import type { ChatMessage as ChatMessageType } from "@/types/ai";
 
 export interface ChatMessageProps {
   message: ChatMessageType;
+  isSpeaking?: boolean;
+  onSpeak?: (messageId: string) => void;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, isSpeaking = false, onSpeak }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isEmpty = message.content.length === 0;
+  const canSpeak =
+    !isUser &&
+    message.status !== "error" &&
+    message.status !== "streaming" &&
+    !isEmpty &&
+    typeof onSpeak === "function";
 
   if (isUser) {
     return (
@@ -53,9 +64,23 @@ export function ChatMessage({ message }: ChatMessageProps) {
           )}
         </div>
         {!isEmpty && (
-          <time className="px-1 text-[11px] text-muted-foreground/70" dateTime={message.createdAt} suppressHydrationWarning>
-            {formatClockTime(message.createdAt)}
-          </time>
+          <div className="flex items-center gap-1 px-1">
+            <time className="text-[11px] text-muted-foreground/70" dateTime={message.createdAt} suppressHydrationWarning>
+              {formatClockTime(message.createdAt)}
+            </time>
+            {canSpeak && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onSpeak?.(message.id)}
+                aria-label={isSpeaking ? "読み上げ中" : "読み上げ"}
+                className="size-6 text-muted-foreground hover:text-foreground"
+              >
+                <Volume2 className={isSpeaking ? "size-3.5 animate-pulse" : "size-3.5"} />
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </div>

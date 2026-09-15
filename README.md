@@ -6,6 +6,8 @@
 
 音声入力はブラウザの MediaRecorder で録音し、Next.js の `POST /api/transcribe` 経由でローカルの faster-whisper-server に送ります。認識結果はチャット入力欄に入り、ユーザーが確認・編集してから送信します（自動送信しません）。ブラウザから Whisper サーバーへは直接アクセスしません。
 
+AI の応答が完成すると、Next.js の `POST /api/tts` 経由でローカルの voicepeak-server（VOICEPEAK 1.2.23）が WAV を生成し、ブラウザで自動再生します。ブラウザから voicepeak-server へは直接アクセスしません。140 文字を超える回答やコードブロックを含む回答は、チャット表示はそのままに読み上げをスキップします。TTS が失敗してもチャット自体は成功として残します。
+
 UI 上の表示名は現在 **Lumi** です（`src/lib/companion.ts`）。これは画面用の名前で、正式なコンパニオン名として確定していません。会話の人格は `src/lib/persona.ts` で管理し、system prompt では名前を固定していません。
 
 ## アプリの特徴
@@ -20,13 +22,14 @@ UI 上の表示名は現在 **Lumi** です（`src/lib/companion.ts`）。これ
 - **ストリーミング応答** — 生成された文章をトークン単位で逐次表示
 - **Markdown** — 応答を `react-markdown` + `remark-gfm` で表示（コードブロックのコピーにも対応）
 - **Memory / Settings UI** — `/memory` と `/settings` の画面はあります（見た目・テーマ変更以外はプレースホルダが多いです）
-- **音声入力（Whisper）** — マイクボタンで録音し、faster-whisper-server が日本語を文字起こしして入力欄へ入れます。TTS（音声出力）は未接続です
+- **音声入力（Whisper）** — マイクボタンで録音し、faster-whisper-server が日本語を文字起こしして入力欄へ入れます
+- **音声出力（VOICEPEAK）** — AI の完成した応答を voicepeak-server 経由で読み上げます。ストリーミング途中では呼びません
 
 会話の履歴は `ChatProvider` のメモリ上で管理しています。ページを再読み込みすると、シード用のモック会話に戻ります。
 
 ## アーキテクチャ
 
-ブラウザは Ollama にも faster-whisper-server にも直接アクセスしません。チャットは `/api/chat`、音声認識は `/api/transcribe` を経由します。
+ブラウザは Ollama にも faster-whisper-server にも voicepeak-server にも直接アクセスしません。チャットは `/api/chat`、音声認識は `/api/transcribe`、音声合成は `/api/tts` を経由します。
 
 文字入力と音声入力は入力欄で合流し、送信は常に既存の `ChatProvider` 経由です。
 
@@ -177,6 +180,7 @@ Settings 画面の System Prompt 欄はプレースホルダで、まだ Ollama 
 - [Ollama](https://ollama.com/) がローカルで起動していること
 - Ollama にモデル `myai:qwen3-8b` がインストールされていること
 - 音声入力を使う場合は、別ディレクトリの faster-whisper-server が `http://127.0.0.1:8000` で起動していること
+- 音声出力を使う場合は、別ディレクトリの voicepeak-server が `http://127.0.0.1:8001` で起動していること（VOICEPEAK 1.2.23）
 
 ### Ollama の起動確認
 
@@ -229,6 +233,7 @@ ollama pull myai:qwen3-8b
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=myai:qwen3-8b
 WHISPER_SERVER_URL=http://127.0.0.1:8000
+VOICEPEAK_SERVER_URL=http://127.0.0.1:8001
 ```
 
 ### 6. 開発サーバーを起動
@@ -245,15 +250,16 @@ http://localhost:3000
 
 ## 環境変数
 
-Ollama と faster-whisper-server への接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` は付けないでください。ブラウザに公開する必要はありません。
+Ollama と faster-whisper-server、voicepeak-server への接続に使う値は **サーバー側専用** です。`NEXT_PUBLIC_` は付けないでください。ブラウザに公開する必要はありません。
 
 | 変数 | 説明 | 既定値 |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | Ollama のベース URL | `http://localhost:11434` |
 | `OLLAMA_MODEL` | 使用するモデル名 | `myai:qwen3-8b` |
 | `WHISPER_SERVER_URL` | faster-whisper-server のベース URL | `http://127.0.0.1:8000` |
+| `VOICEPEAK_SERVER_URL` | voicepeak-server のベース URL | `http://127.0.0.1:8001` |
 
-未設定の場合は `src/lib/ollama-server.ts` / `src/lib/whisper-server.ts` の既定値が使われます。`NEXT_PUBLIC_` は付けないでください。
+未設定の場合は `src/lib/ollama-server.ts` / `src/lib/whisper-server.ts` / `src/lib/voicepeak-server.ts` の既定値が使われます。`NEXT_PUBLIC_` は付けないでください。
 
 ### `.env.example` と `.env.local`
 
@@ -278,6 +284,7 @@ Ollama と faster-whisper-server への接続に使う値は **サーバー側�
 - remark-gfm
 - Ollama（ローカル推論。npm 依存ではなく外部プロセス）
 - faster-whisper-server（ローカル音声認識。npm 依存ではなく外部プロセス）
+- voicepeak-server（ローカル TTS。npm 依存ではなく外部プロセス。VOICEPEAK 1.2.23）
 
 パッケージマネージャは pnpm（`packageManager`: `pnpm@12.4.1`）です。
 
@@ -291,6 +298,7 @@ src/
     page.tsx            チャット画面（ルート）
     api/chat/route.ts        Ollama へのプロキシ（ストリーミング）
     api/transcribe/route.ts  faster-whisper-server へのプロキシ
+    api/tts/route.ts         voicepeak-server へのプロキシ
     settings/page.tsx   設定画面
     memory/page.tsx      Memory画面
     layout.tsx           全体レイアウト（テーマ・チャット状態のProvider）
@@ -311,6 +319,10 @@ src/
     ollama-server.ts     サーバー専用の Ollama 設定・ストリーム処理
     whisper.ts           クライアントの transcribeAudio()（/api/transcribe へ接続）
     whisper-server.ts    サーバー専用の Whisper 設定・エラー処理
+    voicepeak.ts         クライアントの synthesizeSpeech()（/api/tts へ接続）
+    voicepeak-server.ts  サーバー専用の VOICEPEAK 設定・エラー処理
+    tts-text.ts          読み上げ用の短いテキスト整形（140文字制限）
+    speech-playback.ts   ブラウザでの WAV 再生
     persona.ts           人格設定と System Prompt 生成
     companion.ts         UI 表示名（現在は Lumi。人格とは別）
     mock-data.ts         UI確認用の日本語会話モックデータ
@@ -377,14 +389,42 @@ pnpm dev
 
 `src/lib/whisper.ts` は Client Component から呼ばれる接続口です。`WHISPER_SERVER_URL` は読みません。Whisper サーバーへの実際のリクエストは `src/lib/whisper-server.ts` と `/api/transcribe` が担当します。
 
+## Voice Output
+
+音声出力には **voicepeak-server**（VOICEPEAK 1.2.23）が必要です。Next.js とは別プロセスで起動します。
+
+```powershell
+cd D:\Code\voicepeak-server
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+### 動作
+
+1. ユーザーがメッセージを送信する（この操作を再生許可の起点にします）
+2. 既存どおり `/api/chat` → Ollama で応答をストリーミング表示
+3. **応答が完成してから 1 回だけ** `POST /api/tts` に完成テキストを送る
+4. Next.js サーバーが `VOICEPEAK_SERVER_URL`（既定: `http://127.0.0.1:8001`）の `POST /synthesize` へ転送する
+5. 返ってきた WAV をブラウザで再生する
+
+140 文字超・コードブロックを含む回答は読み上げません（チャット表示は通常どおり）。voicepeak-server が止まっていてもテキストチャットは使えます。TTS 失敗は「音声を再生できませんでした」として扱い、チャットをエラーにはしません。
+
+```text
+ChatProvider.onDone（ストリーミング完了）
+  → prepareSpeechText()（src/lib/tts-text.ts）
+  → synthesizeSpeech()（src/lib/voicepeak.ts）
+  → POST /api/tts（src/app/api/tts/route.ts）
+  → voicepeak-server POST /synthesize
+  → WAV を Audio で再生（src/lib/speech-playback.ts）
+```
+
 ## Future work
 
 次の機能は **未実装** です。UI や型の受け皿だけがあるものもあります。
 
-- TTS による音声出力
+- 長文の分割読み上げ
 - 長期 Memory（会話を越えた永続記憶。`/memory` はプレースホルダ UI）
 - Vector DB
 - Web 検索
 - 外部ツール連携
 
-音声合成（TTS）・長期記憶については、`src/types/ai.ts` の `AIPresence`（`speaking`）型が拡張の起点になります。
+音声合成の声選択・長文分割・長期記憶については、今後の拡張です。`src/types/ai.ts` の `AIPresence`（`speaking`）と `TtsStatus` が起点になります。

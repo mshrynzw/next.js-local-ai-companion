@@ -8,7 +8,16 @@ import { MessageList } from "./message-list";
 import { MessageInput } from "./message-input";
 
 export function ChatPanel() {
-  const { activeConversation, sendMessage, isGenerating, stopGenerating } = useChatContext();
+  const {
+    activeConversation,
+    sendMessage,
+    isGenerating,
+    stopGenerating,
+    speakingMessageId,
+    speakMessage,
+    ttsNotice,
+    ttsStatus,
+  } = useChatContext();
   const [draft, setDraft] = React.useState("");
 
   const messages = activeConversation?.messages ?? [];
@@ -26,13 +35,20 @@ export function ChatPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ConversationHeader />
-      <MessageList messages={messages} onSuggestion={handleSuggestion} />
+      <MessageList
+        messages={messages}
+        onSuggestion={handleSuggestion}
+        speakingMessageId={speakingMessageId}
+        onSpeak={speakMessage}
+      />
       <MessageInput
         value={draft}
         onChange={setDraft}
         onSubmit={handleSubmit}
         isGenerating={isGenerating}
         onStop={stopGenerating}
+        ttsNotice={ttsNotice}
+        ttsStatus={ttsStatus}
       />
     </div>
   );

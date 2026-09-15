@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { cn } from "@/lib/utils";
+import type { TtsStatus } from "@/types/ai";
 import { MicButton } from "./mic-button";
 
 const MAX_HEIGHT_PX = 200;
@@ -18,9 +19,19 @@ export interface MessageInputProps {
   onSubmit: () => void;
   isGenerating: boolean;
   onStop: () => void;
+  ttsNotice?: string | null;
+  ttsStatus?: TtsStatus;
 }
 
-export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }: MessageInputProps) {
+export function MessageInput({
+  value,
+  onChange,
+  onSubmit,
+  isGenerating,
+  onStop,
+  ttsNotice = null,
+  ttsStatus = "idle",
+}: MessageInputProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = React.useState(false);
 
@@ -63,7 +74,11 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
     hint = "録音中 — もう一度マイクボタンを押すと停止します";
   } else if (micState === "processing") {
     hint = "文字起こし中…";
+  } else if (ttsNotice) {
+    hint = ttsNotice;
   }
+
+  const hintIsError = Boolean(voiceError) || ttsStatus === "error";
 
   return (
     <div className="border-t border-border/70 bg-background px-4 pb-4 pt-3 sm:px-6">
@@ -109,7 +124,7 @@ export function MessageInput({ value, onChange, onSubmit, isGenerating, onStop }
       <p
         className={cn(
           "mt-1.5 px-1 text-center text-[11px]",
-          voiceError ? "text-destructive" : "text-muted-foreground/50",
+          hintIsError ? "text-destructive" : "text-muted-foreground/50",
         )}
         role="status"
         aria-live="polite"
